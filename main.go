@@ -125,6 +125,8 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// https://developer.github.com/v3/activity/events/types/#pushevent
 	// (*jason.Object)(0xc20803b590)({"added":["test.go"],"author":{"email":"naituida@163.com","name":"naituida","username":"dyzz"},"committer":{"email":"naituida@163.com","name":"naituida","username":"dyzz"},"distinct":true,"id":"76fa79bab843450020bd73fbba0b30741f99055f","message":"init push","modified":[],"removed":[],"timestamp":"2015-09-11T02:22:02-04:00","url":"https://github.com/dyzz/gothubhook/commit/76fa79bab843450020bd73fbba0b30741f99055f"}) }
 
+	var msg string
+
 	if eventType == "push" {
 		repo, _ := request.GetString("repository", "name")
 		ref, _ := request.GetString("ref")
@@ -137,10 +139,9 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			msg, _ := commit.GetString("message")
 			date, _ := commit.GetString("timestamp")
 			event := NewEvent(author, repo, branch, "commit", msg, date, "push")
-			w.Write([]byte(event.String()))
-			fmt.Println(event.String())
+			msg = event.String()
+			w.Write([]byte(msg))
 		}
-		return
 	}
 
 	// https://developer.github.com/v3/activity/events/types/#pullrequestevent
@@ -153,12 +154,15 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		author, _ := pq.GetString("user", "login")
 		repo, _ := request.GetString("repository", "name")
 		event := NewEvent(author, repo, "#"+strconv.Itoa(int(number)), action, msg, date, "pullrequest")
-		w.Write([]byte(event.String()))
-		fmt.Println(event.String())
+		msg = event.String()
+		w.Write([]byte(msg))
 	}
+
+	fmt.Println(msg)
+	AppendLog(msg)
 }
 
-func main2() {
+func main() {
 	srv := NewServer()
 	err := srv.Listen()
 

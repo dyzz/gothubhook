@@ -11,13 +11,86 @@ import (
 	"os/user"
 	"path/filepath"
 
+	"bytes"
+	"github.com/davecgh/go-spew/spew"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/api/drive/v2"
+	drive "google.golang.org/api/drive/v2"
 )
 
-func main() {
+var _ = spew.Dump
+
+func GetFile(d *drive.Service, client *http.Client, fileId string) (string, error) {
+	f, err := d.Files.Get(fileId).Do()
+	if err != nil {
+		return "", err
+	}
+	downloadUrl, ok := f.ExportLinks["text/plain"]
+	if !ok {
+		return "", err
+	}
+	req, err := http.NewRequest("GET", downloadUrl, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Transport.RoundTrip(req)
+	defer resp.Body.Close()
+	if err != nil {
+		return "", err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func UpdateFile(d *drive.Service, fileId string, content string) (*drive.File, error) {
+	f, err := d.Files.Get(fileId).Do()
+	if err != nil {
+		fmt.Printf("An error occurred: %v\n", err)
+		return nil, err
+	}
+	r, err := d.Files.Update(fileId, f).Media(bytes.NewReader([]byte(content))).Do()
+	if err != nil {
+		fmt.Printf("An error occurred: %v\n", err)
+		return nil, err
+	}
+	return r, nil
+}
+
+func GetLog(d *drive.Service, folderId string) (*drive.ChildReference, error) {
+	var cs []*drive.ChildReference
+	pageToken := ""
+	filename := ThisWeek()
+	query := fmt.Sprintf("title = '%s'", filename)
+	for {
+		q := d.Children.List(folderId).Q(query)
+		// If we have a pageToken set, apply it to the query
+		if pageToken != "" {
+			q = q.PageToken(pageToken)
+		}
+		r, err := q.Do()
+		if err != nil {
+			fmt.Printf("An error occurred: %v\n", err)
+			return nil, err
+		}
+		cs = append(cs, r.Items...)
+		pageToken = r.NextPageToken
+		if pageToken == "" {
+			break
+		}
+	}
+	if len(cs) > 0 {
+		return cs[0], nil
+	} else {
+		return nil, nil
+	}
+}
+
+func AppendLog(msg string) {
 	ctx := context.Background()
 
 	b, err := ioutil.ReadFile("client_secret.json")
@@ -25,7 +98,7 @@ func main() {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	config, err := google.ConfigFromJSON(b, drive.DriveMetadataReadonlyScope)
+	config, err := google.ConfigFromJSON(b, drive.DriveScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
@@ -36,21 +109,15 @@ func main() {
 		log.Fatalf("Unable to retrieve drive Client %v", err)
 	}
 
-	r, err := srv.Files.List().MaxResults(100).Do()
-
+	children, err := GetLog(srv, "0B14gQeVTanyZfnhwalk2OG9UVHVucHhLOE44ZHlySnpIM0FvdmYzMjNiOUZVVjEySzBzZk0")
 	if err != nil {
-		log.Fatalf("Unable to retrieve files.", err)
+		fmt.Println(err)
 	}
-
-	fmt.Println("Files:")
-	if len(r.Items) > 0 {
-		for _, i := range r.Items {
-			fmt.Printf("%s (%s)\n", i.Title, i.Id)
-		}
-	} else {
-		fmt.Print("No files found.")
-	}
-
+	fileId := children.Id
+	content, err := GetFile(srv, client, fileId)
+	fmt.Println(content)
+	content = content + "\n" + msg
+	UpdateFile(srv, fileId, content)
 }
 
 // getClient uses a Context and Config to retrieve a Token
