@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/antonholmquist/jason"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/fatih/structs"
 	"github.com/hoisie/mustache"
 )
@@ -15,11 +15,21 @@ type Event struct {
 	Author string
 	Repo   string
 	Branch string
-	Commit string
+	Msg    string
 	Type   string
 }
 
-var eventTmpl, err = mustache.ParseString("<ul><li>{{Author}}</li><li>{{Repo}}</li><li>{{Branch}}</li><li>{{Commit}}</li></ul>")
+func NewEvernt(author, repo, branch, msg, ty string) *Event {
+	return &Event{
+		Author: author,
+		Repo:   repo,
+		Branch: branch,
+		Msg:    msg,
+		Type:   ty,
+	}
+}
+
+var eventTmpl, err = mustache.ParseString("<ul><li>{{Author}}</li><li>{{Repo}}</li><li>{{Branch}}</li><li>{{Msg}}</li></ul>")
 
 func (e *Event) String() string {
 	m := structs.Map(e)
@@ -75,21 +85,27 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// https://developer.github.com/v3/activity/events/types/#pushevent
+	// (*jason.Object)(0xc20803b590)({"added":["test.go"],"author":{"email":"naituida@163.com","name":"naituida","username":"dyzz"},"committer":{"email":"naituida@163.com","name":"naituida","username":"dyzz"},"distinct":true,"id":"76fa79bab843450020bd73fbba0b30741f99055f","message":"init push","modified":[],"removed":[],"timestamp":"2015-09-11T02:22:02-04:00","url":"https://github.com/dyzz/gothubhook/commit/76fa79bab843450020bd73fbba0b30741f99055f"}) }
+
 	if eventType == "push" {
+		repo, _ := request.GetString("repository", "name")
+		ref, _ := request.GetString("ref")
+		chunks := strings.Split(ref, "/")
+		branch := chunks[len(chunks)-1]
+
 		commits, _ := request.GetObjectArray("commits")
-		w.Write([]byte(spew.Sdump(commits)))
-		spew.Dump(commits)
+		for _, commit := range commits {
+			author, _ := commit.GetString("author", "name")
+			msg, _ := commit.GetString("message")
+			event := NewEvernt(author, repo, branch, msg, "push")
+			w.Write([]byte(event.String()))
+			fmt.Println(event.String())
+		}
 		return
 	}
 }
 
 func main() {
-	event := &Event{
-		Repo:   "evm",
-		Branch: "review",
-		Commit: "fix bugs",
-	}
-	fmt.Println(event.String())
 	srv := NewServer()
 	err := srv.Listen()
 
