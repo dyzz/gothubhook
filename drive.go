@@ -115,7 +115,6 @@ func AppendLog(msg string) {
 	}
 	fileId := children.Id
 	content, err := GetFile(srv, client, fileId)
-	fmt.Println(content)
 	content = content + "\n" + msg
 	UpdateFile(srv, fileId, content)
 }
