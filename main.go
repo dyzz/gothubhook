@@ -38,7 +38,7 @@ func NewEvent(author, repo, branch, action, msg, date, ty string) *Event {
 }
 
 var pushTmpl, _ = mustache.ParseString("{{Date}} -- {{Author}} {{Action}} to {{Repo}}/{{Branch}}\n\t{{Msg}}\n")
-var pqTmpl, _ = mustache.ParseFile("{{Date}} -- {{Author}} {{Action}} Pull Request{{Branch}} to {{Repo}}\n\t{{Msg}}\n")
+var pqTmpl, _ = mustache.ParseString("{{Date}} -- {{Author}} {{Action}} Pull Request{{Branch}} to {{Repo}}\n\t{{Msg}}\n")
 
 func (e *Event) String() string {
 	m := structs.Map(e)
@@ -144,7 +144,7 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// https://developer.github.com/v3/activity/events/types/#pullrequestevent
-	if eventType == "pullrequest" {
+	if eventType == "pull_request" {
 		action, _ := request.GetString("action")
 		number, _ := request.GetInt64("number")
 		pq, _ := request.GetObject("pull_request")
