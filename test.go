@@ -16,20 +16,22 @@ type Event struct {
 	Repo   string
 	Branch string
 	Msg    string
+	Date   string
 	Type   string
 }
 
-func NewEvernt(author, repo, branch, msg, ty string) *Event {
+func NewEvernt(author, repo, branch, msg, date, ty string) *Event {
 	return &Event{
 		Author: author,
 		Repo:   repo,
 		Branch: branch,
 		Msg:    msg,
+		Date:   date,
 		Type:   ty,
 	}
 }
 
-var eventTmpl, err = mustache.ParseString("<ul><li>{{Author}}</li><li>{{Repo}}</li><li>{{Branch}}</li><li>{{Msg}}</li></ul>")
+var eventTmpl, err = mustache.ParseString("{{Date}} -- {{Author}} pushed to {{Repo}}/{{Branch}}\n\t{{Msg}}\n")
 
 func (e *Event) String() string {
 	m := structs.Map(e)
@@ -97,7 +99,8 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		for _, commit := range commits {
 			author, _ := commit.GetString("author", "name")
 			msg, _ := commit.GetString("message")
-			event := NewEvernt(author, repo, branch, msg, "push")
+			date, _ := commit.GetString("timestamp")
+			event := NewEvernt(author, repo, branch, msg, date, "push")
 			w.Write([]byte(event.String()))
 			fmt.Println(event.String())
 		}
