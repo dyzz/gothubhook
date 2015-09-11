@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,27 +19,36 @@ type Event struct {
 	Author string
 	Repo   string
 	Branch string
+	Action string
 	Msg    string
 	Date   string
 	Type   string
 }
 
-func NewEvernt(author, repo, branch, msg, date, ty string) *Event {
+func NewEvent(author, repo, branch, action, msg, date, ty string) *Event {
 	return &Event{
 		Author: author,
 		Repo:   repo,
 		Branch: branch,
+		Action: action,
 		Msg:    msg,
 		Date:   date,
 		Type:   ty,
 	}
 }
 
-var eventTmpl, err = mustache.ParseString("{{Date}} -- {{Author}} pushed to {{Repo}}/{{Branch}}\n\t{{Msg}}\n")
+var pushTmpl, _ = mustache.ParseString("{{Date}} -- {{Author}} {{Action}} to {{Repo}}/{{Branch}}\n\t{{Msg}}\n")
+var pqTmpl, _ = mustache.ParseFile("{{Date}} -- {{Author}} {{Action}} Pull Request{{Branch}} to {{Repo}}\n\t{{Msg}}\n")
 
 func (e *Event) String() string {
 	m := structs.Map(e)
-	return eventTmpl.Render(m)
+	if e.Type == "push" {
+		return pushTmpl.Render(m)
+	}
+	if e.Type == "pullrequest" {
+		return pqTmpl.Render(m)
+	}
+	return ""
 }
 
 type Server struct {
@@ -80,7 +93,30 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	request, err := jason.NewObjectFromReader(req.Body)
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		http.Error(w, "Fail to read req.Body", http.StatusBadRequest)
+	}
+
+	if srv.Secret != "" {
+		sig := req.Header.Get("X-Hub-Signature")
+
+		if sig == "" {
+			http.Error(w, "Missing X-Hub-Signature", http.StatusForbidden)
+			return
+		}
+
+		mac := hmac.New(sha1.New, []byte(srv.Secret))
+		mac.Write(body)
+		expected := "sha1=" + hex.EncodeToString(mac.Sum(nil))
+		// hmac Equal won't leak through timing side-channel
+		if !hmac.Equal([]byte(expected), []byte(sig)) {
+			http.Error(w, "Secret not match", http.StatusForbidden)
+			return
+		}
+	}
+
+	request, err := jason.NewObjectFromBytes(body)
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
@@ -100,11 +136,25 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			author, _ := commit.GetString("author", "name")
 			msg, _ := commit.GetString("message")
 			date, _ := commit.GetString("timestamp")
-			event := NewEvernt(author, repo, branch, msg, date, "push")
+			event := NewEvent(author, repo, branch, "commit", msg, date, "push")
 			w.Write([]byte(event.String()))
 			fmt.Println(event.String())
 		}
 		return
+	}
+
+	// https://developer.github.com/v3/activity/events/types/#pullrequestevent
+	if eventType == "pullrequest" {
+		action, _ := request.GetString("action")
+		number, _ := request.GetInt64("number")
+		pq, _ := request.GetObject("pull_request")
+		msg, _ := pq.GetString("title")
+		date, _ := pq.GetString("updated_at")
+		author, _ := pq.GetString("user", "login")
+		repo, _ := request.GetString("repository", "name")
+		event := NewEvent(author, repo, "#"+strconv.Itoa(int(number)), action, msg, date, "pullrequest")
+		w.Write([]byte(event.String()))
+		fmt.Println(event.String())
 	}
 }
 
