@@ -158,7 +158,7 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func main() {
+func main2() {
 	srv := NewServer()
 	err := srv.Listen()
 
