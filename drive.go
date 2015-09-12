@@ -53,6 +53,7 @@ func UpdateFile(d *drive.Service, fileId string, content string) (*drive.File, e
 		fmt.Printf("An error occurred: %v\n", err)
 		return nil, err
 	}
+	f.MimeType = "text/plain"
 	r, err := d.Files.Update(fileId, f).Media(bytes.NewReader([]byte(content))).Do()
 	if err != nil {
 		fmt.Printf("An error occurred: %v\n", err)
