@@ -17,6 +17,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	drive "google.golang.org/api/drive/v2"
+	"regexp"
 )
 
 var _ = spew.Dump
@@ -117,7 +118,10 @@ func AppendLog(msg string) {
 	fileId := children.Id
 	content, err := GetFile(srv, client, fileId)
 	content = content + "\n" + msg
-	UpdateFile(srv, fileId, content)
+	// remove redundant empty line
+	reBlank := regexp.MustCompile(`([ \t]*\n){2,}`)
+	output := reBlank.ReplaceAllLiteralString(content, "\n")
+	UpdateFile(srv, fileId, output)
 }
 
 // getClient uses a Context and Config to retrieve a Token
