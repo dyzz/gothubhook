@@ -115,13 +115,28 @@ func AppendLog(msg string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fileId := children.Id
-	content, err := GetFile(srv, client, fileId)
-	content = content + "\n" + msg
-	// remove redundant empty line
-	reBlank := regexp.MustCompile(`([ \t]*\n){2,}`)
-	output := reBlank.ReplaceAllLiteralString(content, "\n")
-	UpdateFile(srv, fileId, output)
+	if children != nil {
+		fileId := children.Id
+		content, err := GetFile(srv, client, fileId)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		content = content + "\n" + msg
+		// remove redundant empty line
+		reBlank := regexp.MustCompile(`([ \t]*\n){2,}`)
+		output := reBlank.ReplaceAllLiteralString(content, "\n")
+		UpdateFile(srv, fileId, output)
+	} else {
+		// create a new file
+		f := &drive.File{Title: ThisWeek(), MimeType: "text/plain"}
+		p := &drive.ParentReference{Id: "0B14gQeVTanyZfnhwalk2OG9UVHVucHhLOE44ZHlySnpIM0FvdmYzMjNiOUZVVjEySzBzZk0"}
+		f.Parents = []*drive.ParentReference{p}
+		_, err := srv.Files.Insert(f).Media(bytes.NewReader([]byte(msg))).Do()
+		if err != nil {
+			fmt.Printf("An error occurred: %v\n", err)
+		}
+	}
 }
 
 // getClient uses a Context and Config to retrieve a Token
